@@ -1,0 +1,70 @@
+# Standalone compose file for ibkr-proxy.
+# Run from this directory:
+#   docker compose up --build
+#
+# Single-container layout: the FastAPI proxy and IB Gateway live in the
+# same image (built FROM ghcr.io/gnzsnz/ib-gateway:latest). docker-entrypoint.sh
+# starts IB Gateway + IBC, waits for the API socket, then execs uvicorn.
+#
+# The proxy is the sole client connected to this Gateway. If you need more
+# than one proxy per account, run a separate stack with a different
+# IBKR_CLIENT_ID and (optionally) a different host port mapping.
+#
+# To run multiple proxies against the same Gateway, switch to a two-service
+# layout (separate ib-gateway + proxy containers on a shared network).
+
+name: ibkr-proxy
+
+services:
+  ibkr-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ibkr-proxy:latest
+    container_name: ibkr-proxy
+    restart: unless-stopped
+
+    environment:
+      # --- Proxy ---
+      PROXY_HOST: "0.0.0.0"
+      PROXY_PORT: "5001"
+      IBKR_HOST: "127.0.0.1"
+      IBKR_PORT: "4002"            # overridden by entrypoint if TRADING_MODE=live
+      IBKR_CLIENT_ID: ${IBKR_CLIENT_ID:-1}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+
+      # --- IB Gateway (consumed by gnzsnz/ib-gateway) ---
+      TWS_USERID: ${TWS_USERID}
+      TWS_PASSWORD: ${TWS_PASSWORD}
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      READ_ONLY_API: ${READ_ONLY_API:-no}
+      TWOFA_TIMEOUT_ACTION: ${TWOFA_TIMEOUT_ACTION:-restart}
+      RELOGIN_AFTER_TWOFA_TIMEOUT: ${RELOGIN_AFTER_TWOFA_TIMEOUT:-yes}
+      TIME_ZONE: ${TIME_ZONE:-Etc/UTC}
+      VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-}
+
+      # --- Internal ---
+      IB_API_READY_TIMEOUT: ${IB_API_READY_TIMEOUT:-180}
+
+    ports:
+      # FastAPI proxy
+      - "${APP_PORT:-5001}:5001"
+      # IB Gateway API (socat-relayed). 4004 = paper, 4003 = live.
+      # Exposed on 127.0.0.1 only; useful for poking the API from the host.
+      - "127.0.0.1:4004:4004"
+      # VNC (only if VNC_SERVER_PASSWORD is set)
+      - "127.0.0.1:5900:5900"
+
+    volumes:
+      # Persist IB Gateway settings / login state across restarts.
+      - ibgateway-data:/home/ibgateway
+
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/5001' >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+
+volumes:
+  ibgateway-data:
