@@ -94,16 +94,15 @@ Python deps are managed with [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-export PYTHONPATH=$PYTHONPATH:.
 export IBKR_HOST=127.0.0.1 IBKR_PORT=4002 IBKR_CLIENT_ID=1
-uv run python main.py
+uv run python -m app.main
 ```
 
 Or activate the venv directly:
 
 ```bash
 source .venv/bin/activate
-python main.py
+python -m app.main
 ```
 
 ## API Endpoints
@@ -146,8 +145,10 @@ ibkr-proxy/
 ├── uv.lock
 ├── .dockerignore
 ├── .env.example
-├── config.py              # pydantic settings
-├── ibkr_client.py         # ib_async wrapper + webhook fan-out
-├── main.py                # FastAPI app
-└── models.py              # pydantic request/response models
+└── app/
+    ├── __init__.py
+    ├── main.py            # FastAPI app (run as app.main:app)
+    ├── ibkr_client.py     # ib_async wrapper + webhook fan-out
+    ├── config.py          # pydantic settings
+    └── models.py          # pydantic request/response models
 ```

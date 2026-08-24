@@ -74,4 +74,4 @@ ENV PORT_API=5001 \
     IB_API_READY_TIMEOUT=180
 
 ENTRYPOINT ["/home/ibgateway/app/docker-entrypoint.sh"]
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5001"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5001"]

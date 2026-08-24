@@ -2,9 +2,9 @@ import logging
 from fastapi import FastAPI, Header, HTTPException
 from typing import Optional, Dict, List
 
-from ibkr_client import IBKRClient
-from config import settings
-from models import (
+from .ibkr_client import IBKRClient
+from .config import settings
+from .models import (
     LimitOrderRequest, MarketOrderRequest, BracketOrderRequest, UpdateOrderRequest,
     OrderResponse, BracketOrderResponse, PositionResponse, HealthResponse,
     OpenOrderResponse, OHLCResponse, AccountNAVResponse

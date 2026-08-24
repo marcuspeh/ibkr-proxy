@@ -4,7 +4,7 @@ import httpx
 from typing import Optional, List
 from ib_async import IB, Contract, Order
 
-from config import settings
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
