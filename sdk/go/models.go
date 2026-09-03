@@ -38,6 +38,9 @@ type OrderRequest struct {
 type LimitOrderRequest struct {
 	OrderRequest
 	LmtPrice float64 `json:"lmtPrice"`
+	// TIF is the IBKR time-in-force. Defaulted to "GTC" so limit orders
+	// persist across sessions. Valid values include DAY, GTC, IOC, FOK, GTD.
+	TIF string `json:"tif"`
 }
 
 type MarketOrderRequest struct {

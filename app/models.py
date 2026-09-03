@@ -15,6 +15,9 @@ class OrderBase(BaseModel):
 
 class LimitOrderRequest(ContractBase, OrderBase):
     lmtPrice: float
+    # Time-in-force. Defaults to GTC so limit orders persist beyond the
+    # session; valid IBKR values include DAY, GTC, IOC, FOK, GTD, etc.
+    tif: str = "DAY"
 
 class MarketOrderRequest(ContractBase, OrderBase):
     pass

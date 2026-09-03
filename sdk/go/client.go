@@ -86,6 +86,9 @@ func (c *BrokerClient) Health(ctx context.Context) (*HealthResponse, error) {
 
 func (c *BrokerClient) PlaceLimitOrder(ctx context.Context, req LimitOrderRequest, idempotencyKey string) (*OrderResponse, error) {
 	req.OrderRequest.Contract.Defaults()
+	if req.TIF == "" {
+		req.TIF = "DAY"
+	}
 	var res OrderResponse
 	if err := c.doRequest(ctx, "POST", "/orders/limit", req, &res, idempotencyKey); err != nil {
 		return nil, err

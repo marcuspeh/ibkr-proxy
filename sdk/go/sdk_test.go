@@ -86,10 +86,10 @@ func TestBrokerClient_Methods(t *testing.T) {
 		t.Errorf("Health: %s %s", gotMethod, gotPath)
 	}
 
-	// PlaceLimitOrder
+	// PlaceLimitOrder (default TIF + outsideRth)
 	gotMethod, gotPath, gotIDemKey = "", "", ""
 	if _, err := c.PlaceLimitOrder(ctx, LimitOrderRequest{
-		OrderRequest: OrderRequest{Contract: Contract{Symbol: "AAPL"}, Action: "BUY", TotalQuantity: 1},
+		OrderRequest: OrderRequest{Contract: Contract{Symbol: "AAPL"}, Action: "BUY", TotalQuantity: 1, OutsideRth: true},
 		LmtPrice:     150.5,
 	}, "idem-1"); err != nil {
 		t.Fatalf("PlaceLimitOrder: %v", err)
@@ -99,6 +99,28 @@ func TestBrokerClient_Methods(t *testing.T) {
 	}
 	if !strings.Contains(string(lastBody), `"secType":"STK"`) || !strings.Contains(string(lastBody), `"currency":"USD"`) {
 		t.Errorf("Defaults not applied: %s", lastBody)
+	}
+	if !strings.Contains(string(lastBody), `"outsideRth":true`) {
+		t.Errorf("outsideRth not propagated: %s", lastBody)
+	}
+	if !strings.Contains(string(lastBody), `"tif":"GTC"`) {
+		t.Errorf("default TIF=GTC not applied: %s", lastBody)
+	}
+
+	// PlaceLimitOrder (caller-supplied TIF)
+	lastBody = nil
+	if _, err := c.PlaceLimitOrder(ctx, LimitOrderRequest{
+		OrderRequest: OrderRequest{Contract: Contract{Symbol: "AAPL"}, Action: "BUY", TotalQuantity: 1},
+		LmtPrice:     150.5,
+		TIF:          "DAY",
+	}, ""); err != nil {
+		t.Fatalf("PlaceLimitOrder DAY: %v", err)
+	}
+	if !strings.Contains(string(lastBody), `"tif":"DAY"`) {
+		t.Errorf("caller TIF=DAY not propagated: %s", lastBody)
+	}
+	if strings.Contains(string(lastBody), `"tif":"GTC"`) {
+		t.Errorf("caller TIF should override default GTC: %s", lastBody)
 	}
 
 	// PlaceMarketOrder

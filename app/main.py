@@ -127,9 +127,10 @@ async def place_limit_order(
     try:
         contract = await ibkr.qualify_contract(req.symbol, req.secType, req.currency, req.exchange)
         order = LimitOrder(
-            req.action, req.totalQuantity, req.lmtPrice, 
+            req.action, req.totalQuantity, req.lmtPrice,
             orderRef=req.orderRef,
-            outsideRth=req.outsideRth
+            outsideRth=req.outsideRth,
+            tif=req.tif
         )
         trade = await ibkr.place_order(contract, order)
         
