@@ -107,6 +107,9 @@ func (c *BrokerClient) PlaceMarketOrder(ctx context.Context, req MarketOrderRequ
 
 func (c *BrokerClient) PlaceBracketOrder(ctx context.Context, req BracketOrderRequest, idempotencyKey string) (*BracketOrderResponse, error) {
 	req.OrderRequest.Contract.Defaults()
+	if req.ParentTIF == "" {
+		req.ParentTIF = "DAY"
+	}
 	var res BracketOrderResponse
 	if err := c.doRequest(ctx, "POST", "/orders/bracket", req, &res, idempotencyKey); err != nil {
 		return nil, err

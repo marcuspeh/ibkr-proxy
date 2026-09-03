@@ -26,6 +26,10 @@ class BracketOrderRequest(ContractBase, OrderBase):
     lmtPrice: float
     tpPrice: float
     slPrice: float
+    # Time-in-force for the parent (entry) order. Children (TP/SL) are
+    # always GTC so the protective legs survive the session. Defaults to
+    # GTC so brackets stay alive overnight.
+    parentTif: str = "GTC"
 
 class UpdateOrderRequest(BaseModel):
     lmtPrice: Optional[float] = None

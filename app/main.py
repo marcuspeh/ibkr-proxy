@@ -192,14 +192,13 @@ async def place_bracket_order(
             req.action, req.totalQuantity, req.lmtPrice, req.tpPrice, req.slPrice,
             orderRef=req.orderRef
         )
-        
-        # Enable outsideRth for all orders; GTC only for children (TP/SL)
+
+        # Parent uses caller-supplied TIF (default GTC); TP/SL children
+        # are always GTC so the protective legs survive the session.
+        # outsideRth is respected on every leg so overnight entries work.
         for i, o in enumerate(bracket):
-            o.outsideRth = True
-            if i > 0:  # Children are TP and SL
-                o.tif = 'GTC'
-            else:
-                o.tif = 'DAY'  # Parent is DAY
+            o.outsideRth = req.outsideRth
+            o.tif = req.parentTif if i == 0 else 'GTC'
         
         # Place the parent order (entry)
         parent_trade = await ibkr.place_order(contract, bracket[0])

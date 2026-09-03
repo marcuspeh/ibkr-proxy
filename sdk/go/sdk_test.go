@@ -103,24 +103,24 @@ func TestBrokerClient_Methods(t *testing.T) {
 	if !strings.Contains(string(lastBody), `"outsideRth":true`) {
 		t.Errorf("outsideRth not propagated: %s", lastBody)
 	}
-	if !strings.Contains(string(lastBody), `"tif":"GTC"`) {
-		t.Errorf("default TIF=GTC not applied: %s", lastBody)
+	if !strings.Contains(string(lastBody), `"tif":"DAY"`) {
+		t.Errorf("default TIF=DAY not applied: %s", lastBody)
 	}
 
-	// PlaceLimitOrder (caller-supplied TIF)
+	// PlaceLimitOrder (caller-supplied TIF=GTC for overnight)
 	lastBody = nil
 	if _, err := c.PlaceLimitOrder(ctx, LimitOrderRequest{
 		OrderRequest: OrderRequest{Contract: Contract{Symbol: "AAPL"}, Action: "BUY", TotalQuantity: 1},
 		LmtPrice:     150.5,
-		TIF:          "DAY",
+		TIF:          "GTC",
 	}, ""); err != nil {
-		t.Fatalf("PlaceLimitOrder DAY: %v", err)
+		t.Fatalf("PlaceLimitOrder GTC: %v", err)
 	}
-	if !strings.Contains(string(lastBody), `"tif":"DAY"`) {
-		t.Errorf("caller TIF=DAY not propagated: %s", lastBody)
+	if !strings.Contains(string(lastBody), `"tif":"GTC"`) {
+		t.Errorf("caller TIF=GTC not propagated: %s", lastBody)
 	}
-	if strings.Contains(string(lastBody), `"tif":"GTC"`) {
-		t.Errorf("caller TIF should override default GTC: %s", lastBody)
+	if strings.Contains(string(lastBody), `"tif":"DAY"`) {
+		t.Errorf("caller TIF should override default DAY: %s", lastBody)
 	}
 
 	// PlaceMarketOrder
@@ -134,16 +134,39 @@ func TestBrokerClient_Methods(t *testing.T) {
 		t.Errorf("PlaceMarketOrder: %s %s", gotMethod, gotPath)
 	}
 
-	// PlaceBracketOrder
+	// PlaceBracketOrder (overnight: outsideRth + default GTC parent)
 	gotMethod, gotPath = "", ""
+	lastBody = nil
 	if _, err := c.PlaceBracketOrder(ctx, BracketOrderRequest{
-		OrderRequest: OrderRequest{Contract: Contract{Symbol: "NVDA"}, Action: "BUY", TotalQuantity: 3},
+		OrderRequest: OrderRequest{Contract: Contract{Symbol: "NVDA"}, Action: "BUY", TotalQuantity: 3, OutsideRth: true},
 		LmtPrice:     100, TPPrice: 110, SLPrice: 95,
 	}, ""); err != nil {
 		t.Fatalf("PlaceBracketOrder: %v", err)
 	}
 	if gotMethod != "POST" || gotPath != "/orders/bracket" {
 		t.Errorf("PlaceBracketOrder: %s %s", gotMethod, gotPath)
+	}
+	if !strings.Contains(string(lastBody), `"outsideRth":true`) {
+		t.Errorf("bracket outsideRth not propagated: %s", lastBody)
+	}
+	if !strings.Contains(string(lastBody), `"parentTif":"DAY"`) {
+		t.Errorf("bracket default parentTif=DAY not applied: %s", lastBody)
+	}
+
+	// PlaceBracketOrder (caller-supplied parentTif=GTC for overnight)
+	lastBody = nil
+	if _, err := c.PlaceBracketOrder(ctx, BracketOrderRequest{
+		OrderRequest: OrderRequest{Contract: Contract{Symbol: "NVDA"}, Action: "BUY", TotalQuantity: 3, OutsideRth: false},
+		LmtPrice:     100, TPPrice: 110, SLPrice: 95,
+		ParentTIF: "GTC",
+	}, ""); err != nil {
+		t.Fatalf("PlaceBracketOrder GTC: %v", err)
+	}
+	if !strings.Contains(string(lastBody), `"parentTif":"GTC"`) {
+		t.Errorf("caller parentTif=GTC not propagated: %s", lastBody)
+	}
+	if strings.Contains(string(lastBody), `"parentTif":"DAY"`) {
+		t.Errorf("caller parentTif should override default DAY: %s", lastBody)
 	}
 
 	// CancelOrder

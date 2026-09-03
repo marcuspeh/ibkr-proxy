@@ -38,8 +38,8 @@ type OrderRequest struct {
 type LimitOrderRequest struct {
 	OrderRequest
 	LmtPrice float64 `json:"lmtPrice"`
-	// TIF is the IBKR time-in-force. Defaulted to "GTC" so limit orders
-	// persist across sessions. Valid values include DAY, GTC, IOC, FOK, GTD.
+	// TIF is the IBKR time-in-force. Defaulted to "DAY" so limit orders
+	// auto-cancel at session end. Valid values include DAY, GTC, IOC, FOK, GTD.
 	TIF string `json:"tif"`
 }
 
@@ -52,6 +52,10 @@ type BracketOrderRequest struct {
 	LmtPrice float64 `json:"lmtPrice"`
 	TPPrice  float64 `json:"tpPrice"`
 	SLPrice  float64 `json:"slPrice"`
+	// ParentTIF is the time-in-force for the entry leg of the bracket.
+	// TP and SL children are always GTC server-side. Defaults to "DAY"
+	// when empty.
+	ParentTIF string `json:"parentTif"`
 }
 
 type UpdateOrderRequest struct {
