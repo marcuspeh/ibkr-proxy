@@ -9,29 +9,14 @@ import (
 	"net/http"
 )
 
-type Config struct {
-	BaseURL string
-	Port    int
-}
-
-// URL returns the fully-qualified base URL. If Port > 0 it is appended
-// to BaseURL as host:port; otherwise BaseURL is assumed complete
-// (e.g. "http://example.com" or "http://127.0.0.1:8000").
-func (c Config) URL() string {
-	if c.Port <= 0 {
-		return c.BaseURL
-	}
-	return fmt.Sprintf("%s:%d", c.BaseURL, c.Port)
-}
-
 type BrokerClient struct {
 	baseURL string
 	client  *http.Client
 }
 
-func NewBrokerClient(ctx context.Context, config Config) *BrokerClient {
+func NewBrokerClient(ctx context.Context, url string) *BrokerClient {
 	return &BrokerClient{
-		baseURL: config.URL(),
+		baseURL: url,
 		client:  &http.Client{},
 	}
 }

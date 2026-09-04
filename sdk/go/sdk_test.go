@@ -74,7 +74,7 @@ func TestBrokerClient_Methods(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	c := NewBrokerClient(context.Background(), Config{BaseURL: srv.URL, Port: 0})
+	c := NewBrokerClient(context.Background(), srv.URL)
 	ctx := context.Background()
 
 	// Health
