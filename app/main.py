@@ -9,7 +9,7 @@ from .models import (
     OrderResponse, BracketOrderResponse, PositionResponse, HealthResponse,
     OpenOrderResponse, OHLCResponse, AccountNAVResponse
 )
-from ib_async import LimitOrder, MarketOrder, BracketOrder as IBBracketOrder
+from ib_async import LimitOrder, MarketOrder, StopOrder
 
 from contextlib import asynccontextmanager
 
@@ -188,22 +188,37 @@ async def place_bracket_order(
 
     try:
         contract = await ibkr.qualify_contract(req.symbol, req.secType, req.currency, req.exchange)
-        bracket = IBBracketOrder(
-            req.action, req.totalQuantity, req.lmtPrice, req.tpPrice, req.slPrice,
-            orderRef=req.orderRef
-        )
 
-        # Parent uses caller-supplied TIF (default GTC); TP/SL children
-        # are always GTC so the protective legs survive the session.
-        # outsideRth is respected on every leg so overnight entries work.
-        for i, o in enumerate(bracket):
-            o.outsideRth = req.outsideRth
-            o.tif = req.parentTif if i == 0 else 'GTC'
-        
-        # Place the parent order (entry)
-        parent_trade = await ibkr.place_order(contract, bracket[0])
+        # ib_async ships BracketOrder as a plain NamedTuple of three orders,
+        # so the legs are assembled here. Exit legs trade the opposite side.
+        action = req.action.upper()
+        exitAction = "SELL" if action == "BUY" else "BUY"
+        # Parent keeps the caller-supplied TIF; TP/SL are always GTC so the
+        # protective legs survive the session. outsideRth applies to every leg.
+        parent = LimitOrder(
+            action, req.totalQuantity, req.lmtPrice,
+            orderRef=req.orderRef, outsideRth=req.outsideRth,
+            tif=req.parentTif, transmit=False,
+        )
+        takeProfit = LimitOrder(
+            exitAction, req.totalQuantity, req.tpPrice,
+            orderRef=req.orderRef, outsideRth=req.outsideRth,
+            tif="GTC", transmit=False,
+        )
+        stopLoss = StopOrder(
+            exitAction, req.totalQuantity, req.slPrice,
+            orderRef=req.orderRef, outsideRth=req.outsideRth,
+            tif="GTC", transmit=True,
+        )
+        bracket = [parent, takeProfit, stopLoss]
+
+        # The parent is held back (transmit=False) so the children can be
+        # linked to its orderId before anything reaches the exchange; the last
+        # leg's transmit activates the whole group atomically.
+        parent_trade = await ibkr.place_order(contract, parent)
         # Place children
         for o in bracket[1:]:
+            o.parentId = parent_trade.order.orderId
             ibkr.ib.placeOrder(contract, o)
             
         res = BracketOrderResponse(
