@@ -2,7 +2,7 @@ import logging
 from fastapi import FastAPI, Header, HTTPException
 from typing import Optional, Dict, List
 
-from .ibkr_client import IBKRClient
+from .ibkr_client import IBKRClient, round_to_tick
 from .config import settings
 from .models import (
     LimitOrderRequest, MarketOrderRequest, BracketOrderRequest, UpdateOrderRequest,
@@ -188,6 +188,7 @@ async def place_bracket_order(
 
     try:
         contract = await ibkr.qualify_contract(req.symbol, req.secType, req.currency, req.exchange)
+        min_tick = await ibkr.get_min_tick(contract)
 
         # ib_async ships BracketOrder as a plain NamedTuple of three orders,
         # so the legs are assembled here. Exit legs trade the opposite side.
@@ -196,37 +197,32 @@ async def place_bracket_order(
         # Parent keeps the caller-supplied TIF; TP/SL are always GTC so the
         # protective legs survive the session. outsideRth applies to every leg.
         parent = LimitOrder(
-            action, req.totalQuantity, req.lmtPrice,
+            action, req.totalQuantity, round_to_tick(req.lmtPrice, min_tick),
             orderRef=req.orderRef, outsideRth=req.outsideRth,
             tif=req.parentTif, transmit=False,
         )
         takeProfit = LimitOrder(
-            exitAction, req.totalQuantity, req.tpPrice,
+            exitAction, req.totalQuantity, round_to_tick(req.tpPrice, min_tick),
             orderRef=req.orderRef, outsideRth=req.outsideRth,
             tif="GTC", transmit=False,
         )
         stopLoss = StopOrder(
-            exitAction, req.totalQuantity, req.slPrice,
+            exitAction, req.totalQuantity, round_to_tick(req.slPrice, min_tick),
             orderRef=req.orderRef, outsideRth=req.outsideRth,
             tif="GTC", transmit=True,
         )
-        bracket = [parent, takeProfit, stopLoss]
 
         # The parent is held back (transmit=False) so the children can be
         # linked to its orderId before anything reaches the exchange; the last
         # leg's transmit activates the whole group atomically.
-        parent_trade = await ibkr.place_order(contract, parent)
-        # Place children
-        for o in bracket[1:]:
-            o.parentId = parent_trade.order.orderId
-            ibkr.ib.placeOrder(contract, o)
-            
+        parent_trade = await ibkr.place_bracket(contract, parent, [takeProfit, stopLoss])
+
         res = BracketOrderResponse(
             parentPermId=parent_trade.order.permId,
             parentOrderId=parent_trade.order.orderId,
             status=parent_trade.orderStatus.status
         ).dict()
-        
+
         if x_idempotency_key:
             idempotency_cache[x_idempotency_key] = res
         return res

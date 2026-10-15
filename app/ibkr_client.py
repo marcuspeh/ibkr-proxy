@@ -1,12 +1,37 @@
 import asyncio
 import logging
 import httpx
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional, List
-from ib_async import IB, Contract, Order
+from ib_async import IB, Contract, Order, OrderStatus, Trade
 
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+# Statuses IBKR reports while an order submission is still in flight.
+_PENDING_STATUSES = (OrderStatus.PendingSubmit, OrderStatus.ApiPending)
+
+
+def describe_failure(trade: Trade) -> str:
+    """Build a human-readable reason from the most recent IBKR log entry."""
+    for entry in reversed(trade.log):
+        if entry.errorCode:
+            return f"{entry.message} (error {entry.errorCode})"
+    return trade.orderStatus.status
+
+
+def round_to_tick(price: float, min_tick: float) -> float:
+    """Snap a price onto the instrument's tick grid.
+
+    IBKR rejects off-tick prices with error 110, which surfaces as a
+    ValidationError on the order rather than an exception.
+    """
+    if not min_tick or min_tick <= 0:
+        return round(price, 2)
+    step = Decimal(str(min_tick))
+    snapped = (Decimal(str(price)) / step).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * step
+    return float(snapped)
 
 class IBKRClient:
     def __init__(self):
@@ -51,6 +76,11 @@ class IBKRClient:
         if not qualified:
             raise ValueError(f"Contract not found: {symbol}")
         return qualified[0]
+
+    async def get_min_tick(self, contract: Contract) -> float:
+        """Fetch the minimum price increment IBKR accepts for a contract"""
+        details = await self.ib.reqContractDetailsAsync(contract)
+        return details[0].minTick if details else 0.0
 
     async def on_exec_details(self, trade, fill):
         """Handle execution details and push to webhook"""
@@ -123,11 +153,36 @@ class IBKRClient:
     async def place_order(self, contract: Contract, order: Order):
         """Place an order and return the trade object"""
         trade = self.ib.placeOrder(contract, order)
-        # Wait briefly for permId to be assigned
-        timeout = 2.0
-        start_time = asyncio.get_event_loop().time()
-        while not trade.order.permId and (asyncio.get_event_loop().time() - start_time) < timeout:
-            await asyncio.sleep(0.1)
+        await self.wait_for_ack(trade)
+        return trade
+
+    async def place_bracket(self, contract: Contract, parent: Order, children: List[Order]):
+        """Place a bracket: parent held back, children linked then transmitted.
+
+        Returns the parent trade once IBKR has acknowledged or rejected it.
+        Raises RuntimeError if the parent is rejected.
+        """
+        parent_trade = self.ib.placeOrder(contract, parent)
+        # IBKR assigns the orderId synchronously in placeOrder, so the children
+        # can be parented immediately without waiting on a round trip.
+        for child in children:
+            child.parentId = parent.orderId
+            self.ib.placeOrder(contract, child)
+
+        # The last child's transmit releases the whole group, so only wait on
+        # the parent: a rejected parent rejects the bracket.
+        await self.wait_for_ack(parent_trade)
+
+        if parent_trade.orderStatus.status == OrderStatus.ValidationError:
+            raise RuntimeError(f"IBKR rejected the order: {describe_failure(parent_trade)}")
+        return parent_trade
+
+    async def wait_for_ack(self, trade: Trade, timeout: float = 5.0):
+        """Wait for IBKR to move a trade out of its in-flight states."""
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + timeout
+        while trade.orderStatus.status in _PENDING_STATUSES and loop.time() < deadline:
+            await asyncio.sleep(0.05)
         return trade
 
     async def cancel_order(self, order_id: int):
