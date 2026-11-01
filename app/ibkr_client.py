@@ -145,10 +145,16 @@ class IBKRClient:
             }
         return None
 
-    async def get_open_orders(self):
-        """Fetch all current orders"""
-        orders = self.ib.openOrders()
-        return orders
+    async def get_open_trades(self):
+        """Fetch all current orders as trades.
+
+        ib_async's openOrders() returns bare Order objects, which carry
+        neither the contract nor the order status. The proxy needs both, so
+        openTrades() is used instead: each Trade exposes .contract and
+        .orderStatus alongside .order.
+        """
+        trades = self.ib.openTrades()
+        return trades
 
     async def place_order(self, contract: Contract, order: Order):
         """Place an order and return the trade object"""

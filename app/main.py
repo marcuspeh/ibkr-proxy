@@ -10,12 +10,26 @@ from .models import (
     OpenOrderResponse, OHLCResponse, AccountNAVResponse
 )
 from ib_async import LimitOrder, MarketOrder, StopOrder
+from ib_async.util import UNSET_DOUBLE
 
 from contextlib import asynccontextmanager
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def normalize_price(value):
+    """Map ib_async's UNSET_DOUBLE sentinel to None.
+
+    ib_async stores unset price fields as sys.float_info.max rather than
+    None, so a stop order's lmtPrice and a limit order's auxPrice both come
+    back as 1.79e308. Reporting that as a real price would be wrong, so the
+    sentinel is translated to None for the JSON response.
+    """
+    if value is None or value == UNSET_DOUBLE:
+        return None
+    return float(value)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -80,22 +94,23 @@ async def get_account_nav():
 async def get_open_orders():
     if not ibkr.is_connected():
         raise HTTPException(status_code=503, detail="IBKR not connected")
-    open_orders = await ibkr.get_open_orders()
+    open_trades = await ibkr.get_open_trades()
     response = []
-    for order in open_orders:
+    for trade in open_trades:
+        order = trade.order
         orderResponse = OpenOrderResponse(
             permId=order.permId,
             orderId=order.orderId,
-            symbol=order.contract.symbol,
+            symbol=trade.contract.symbol,
             action=order.action,
             totalQuantity=order.totalQuantity,
-            lmtPrice=getattr(order, 'lmtPrice', None),
-            auxPrice=getattr(order, 'auxPrice', None),
-            status=order.orderStatus.status,
-            remaining=order.orderStatus.remaining
+            lmtPrice=normalize_price(getattr(order, 'lmtPrice', None)),
+            auxPrice=normalize_price(getattr(order, 'auxPrice', None)),
+            status=trade.orderStatus.status,
+            remaining=trade.orderStatus.remaining
         )
         response.append(orderResponse)
-        
+
     return response
 
 @app.get("/ohlc", response_model=List[OHLCResponse])
